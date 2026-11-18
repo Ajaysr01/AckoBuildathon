@@ -10,8 +10,10 @@
 - Container startup not yet verified because Docker daemon is not running in this environment.
 - Milestone 2 complete: semantic comparison endpoint resolves local `$ref`s, ignores component-only reorganization, reports route placeholder renames and schema/parameter/response changes, and matches finding locations against declared consumer use.
 - Milestones 2–4 complete: publish gate records allow/block decisions and history; metrics endpoint and React interface are implemented. Policy includes provisional sunset behavior. Consumer usage can also be registered through the API.
-- Verification: `pytest -q backend/tests` passed (19 tests); `python -m compileall` passed; `npm run build` passed; `docker compose config --quiet` passed.
+- Verification: `pytest -q backend/tests` passed (21 tests); `python -m compileall` passed; `npm run build` passed; `docker compose config --quiet` passed.
 - Container startup could not be verified: Docker CLI is present but the Docker daemon is not running/reachable.
 - `README.md` and `REVIEW.md` are drafted. Product-owner policy answers are still pending.
 - Next: after Docker becomes available, run PostgreSQL + API + UI together and manually verify the full flow.
+- Dashboard load/refresh issue fixed: an old SQLite database lacked the `published` columns used by metrics; backend startup now adds missing compatibility columns, and the UI refresh loads successful dashboard sections even if another endpoint errors.
+- Publish findings now surface policy-specific blocker counts and reasons; publish audit shows recent attempts with a show-all option, and repeated attempts are retained as separate audit records.
 - Scope unchanged: supplied specs, consumer declarations, and webhook receiver remain untouched.

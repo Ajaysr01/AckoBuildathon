@@ -208,6 +208,22 @@ def test_expired_sunset_marker_is_affected_and_blocks(monkeypatch):
     assert any(consumer["name"] == "payments-svc" for consumer in lifecycle["affected_consumers"])
     result = client.post("/api/versions/{}/publish?baseline_id={}".format(proposed, baseline)).json()
     assert result["outcome"] == "blocked"
+    blocked_finding = next(finding for finding in result["policy"]["blockers"] if finding.get("sunset_date") == "2026-11-01")
+    assert "Sunset date" in result["policy"]["block_reasons"][blocked_finding["location"]]
+
+
+def test_each_publish_retry_is_added_to_audit(monkeypatch):
+    monkeypatch.setattr("app.main.STARTER_KIT", KIT)
+    client.post("/api/import/starter-kit")
+    baseline = _version_id("quote-api", "3-price-lines.yaml")
+    proposed = _version_id("quote-api", "4-ncb-and-taxes.yaml")
+    first = client.post("/api/versions/{}/publish?baseline_id={}".format(proposed, baseline))
+    second = client.post("/api/versions/{}/publish?baseline_id={}".format(proposed, baseline))
+    assert first.status_code == second.status_code == 200
+    attempts = client.get("/api/publish-attempts").json()
+    assert len(attempts) == 2
+    assert attempts[0]["id"] > attempts[1]["id"]
+    assert client.get("/api/metrics").json()["publish_attempts"] == 2
 
 
 def test_consumer_usage_can_be_registered_through_api(monkeypatch):
@@ -223,3 +239,9 @@ def test_consumer_usage_can_be_registered_through_api(monkeypatch):
     assert result.status_code == 201
     assert result.json()["path"] == "/claims/{id}"
     assert len(client.get("/api/services/{}/usages".format(consumer["id"])).json()) == 4
+
+
+def test_dashboard_metrics_endpoint_succeeds():
+    response = client.get("/api/metrics")
+    assert response.status_code == 200
+    assert response.json()["publish_attempts"] == 0

@@ -28,22 +28,28 @@ function App() {
   const [file, setFile] = useState(null);
   const [serviceForm, setServiceForm] = useState({ name: '', role: 'provider', owner: '' });
   const [usageForm, setUsageForm] = useState({ consumer_service_id: '', provider_service_id: '', method: 'GET', path: '', sends: '', reads: '' });
+  const [showAllAttempts, setShowAllAttempts] = useState(false);
 
   const providers = useMemo(() => services.filter((service) => service.role === 'provider'), [services]);
   const selected = providers.find((service) => String(service.id) === String(selectedService));
 
   async function refresh() {
-    try {
-      const [serviceData, attemptData, metricData] = await Promise.all([
-        request('/api/services'), request('/api/publish-attempts'), request('/api/metrics'),
-      ]);
+    const [serviceResult, attemptResult, metricResult] = await Promise.allSettled([
+      request('/api/services'), request('/api/publish-attempts'), request('/api/metrics'),
+    ]);
+    const failures = [];
+    if (serviceResult.status === 'fulfilled') {
+      const serviceData = serviceResult.value;
       setServices(serviceData);
-      setAttempts(attemptData);
-      setMetrics(metricData);
       if (!selectedService && serviceData.some((service) => service.role === 'provider')) {
         setSelectedService(String(serviceData.find((service) => service.role === 'provider').id));
       }
-    } catch (err) { setError(err.message); }
+    } else failures.push(`Services: ${serviceResult.reason.message}`);
+    if (attemptResult.status === 'fulfilled') setAttempts(attemptResult.value);
+    else failures.push(`Publish history: ${attemptResult.reason.message}`);
+    if (metricResult.status === 'fulfilled') setMetrics(metricResult.value);
+    else failures.push(`Metrics: ${metricResult.reason.message}`);
+    setError(failures.length ? failures.join(' · ') : '');
   }
 
   useEffect(() => { refresh(); }, []);
@@ -61,9 +67,8 @@ function App() {
   async function importKit() {
     setBusy(true); setError(''); setMessage('');
     try {
-      const result = await request('/api/import/starter-kit', { method: 'POST' });
-      setMessage(`Imported ${result.imported_specs} specs and ${result.imported_consumers} consumers. ${result.invalid_specs} spec(s) are invalid.`);
-      if (result.warnings?.length) setMessage((current) => `${current} ${result.warnings.join(' ')}`);
+      await request('/api/import/starter-kit', { method: 'POST' });
+      setMessage('Upload Successful');
       await refresh();
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
@@ -145,7 +150,7 @@ function App() {
     </aside>
 
     <main className="main-content">
-      <header className="topbar"><div><span className="eyebrow">PLATFORM / CONTRACTS</span><h1>API change control</h1></div><button className="button button-secondary" onClick={refresh}>↻ <span>Refresh</span></button></header>
+      <header className="topbar"><div><span className="eyebrow">PLATFORM / CONTRACTS</span><h1>API change control</h1></div></header>
       <section className="welcome-row" id="overview">
         <div><h2>Good contracts make reliable services.</h2><p>Review API changes against declared consumer usage before they ship.</p></div>
         <button className="button button-primary" onClick={importKit} disabled={busy}>{busy ? 'Working…' : '⇩  Import starter kit'}</button>
@@ -196,10 +201,10 @@ function App() {
         {selected && <form className="upload-row" onSubmit={uploadSpec}><span className="upload-label">Add a proposed spec to {selected.name}</span><input type="file" accept=".yaml,.yml,.json" onChange={(event) => setFile(event.target.files?.[0] || null)} /><button className="button button-secondary" disabled={busy || !file}>Upload spec</button></form>}
         {versions.some((version) => version.version_collision) && <div className="notice warning compact">Duplicate imported version strings are kept as separate records. Choose the exact source file in the selectors; new uploads cannot reuse an existing version.</div>}
           {comparison && <div className="comparison-result">
-          <div className={`decision-banner ${comparison.summary.publish_blocked ? 'blocked' : 'safe'}`}><div><b>{comparison.summary.publish_blocked ? 'Publishing would be blocked' : 'No declared consumer break detected'}</b><span>{comparison.summary.change_count} changes · {comparison.summary.affected_consumer_count} affected declared consumers · {comparison.summary.warning_count} warnings</span></div><button className={`button ${comparison.summary.publish_blocked ? 'button-disabled' : 'button-green'}`} onClick={publish} disabled={busy}>{comparison.summary.publish_blocked ? 'Record blocked attempt' : 'Publish version'}</button></div>
+          <div className={`decision-banner ${comparison.summary.publish_blocked ? 'blocked' : 'safe'}`}><div><b>{comparison.summary.publish_blocked ? `Publishing blocked by policy (${comparison.summary.policy_blocker_count} blocker${comparison.summary.policy_blocker_count === 1 ? '' : 's'})` : 'No declared consumer break detected'}</b><span>{comparison.summary.change_count} changes · {comparison.summary.affected_consumer_count} affected declared consumers · {comparison.summary.warning_count} warnings</span>{comparison.summary.publish_blocked && <small>Non-breaking changes can still be blocked when an expired sunset element is used by a declared consumer.</small>}</div><button className={`button ${comparison.summary.publish_blocked ? 'button-disabled' : 'button-green'}`} onClick={publish} disabled={busy}>{comparison.summary.publish_blocked ? 'Record blocked attempt' : 'Publish version'}</button></div>
           {comparison.changes.length === 0 ? <div className="empty-state">No API contract changes found.</div> : <div className="change-list">{comparison.changes.map((change, index) => <article className="change-row" key={`${change.location}-${index}`}>
             <div className={`change-icon ${change.severity === 'breaking' ? 'breaking' : 'safe-icon'}`}>{change.severity === 'breaking' ? '!' : '↗'}</div>
-            <div className="change-main"><div className="change-title"><b>{change.summary}</b><span className={`tag ${change.severity === 'breaking' ? 'tag-red' : 'tag-green'}`}>{change.severity}</span>{change.policy_warning && <span className="tag tag-amber">sunset warning</span>}</div><code>{change.location}</code><div className="change-values"><span>Before: {JSON.stringify(change.before)}</span><span>After: {JSON.stringify(change.after)}</span></div>
+            <div className="change-main"><div className="change-title"><b>{change.summary}</b><span className={`tag ${change.severity === 'breaking' ? 'tag-red' : 'tag-green'}`}>{change.severity}</span>{change.publish_blocked && <span className="tag tag-red">policy blocker</span>}{change.policy_warning && <span className="tag tag-amber">sunset warning</span>}</div><code>{change.location}</code>{change.policy_reason && <div className="policy-reason">{change.policy_reason}</div>}<div className="change-values"><span>Before: {JSON.stringify(change.before)}</span><span>After: {JSON.stringify(change.after)}</span></div>
               {change.affected_consumers.length > 0 ? <div className="consumer-tags">Affects {change.affected_consumers.map((consumer) => <span key={consumer.name}>{consumer.name}</span>)}</div> : <div className="no-impact">No declared consumer usage matched this change.</div>}
             </div>
           </article>)}</div>}
@@ -208,7 +213,7 @@ function App() {
 
       <section className="panel" id="history">
         <div className="panel-heading"><div><div className="eyebrow">AUDIT TRAIL</div><h3>Recent publish attempts</h3></div><span className="count-pill">{attempts.length} recorded</span></div>
-        {attempts.length === 0 ? <div className="empty-state">Publish attempts and their outcomes will appear here.</div> : <div className="history-list">{attempts.slice(0, 8).map((attempt) => <div className="history-row" key={attempt.id}><span className={`history-status ${attempt.outcome}`}>{attempt.outcome === 'blocked' ? 'BLOCKED' : 'PUBLISHED'}</span><span>Spec #{attempt.proposed_spec_id} against #{attempt.baseline_spec_id}</span><span className="history-reason">{attempt.reason}</span><time>{new Date(attempt.created_at).toLocaleString()}</time></div>)}</div>}
+        {attempts.length === 0 ? <div className="empty-state">Publish attempts and their outcomes will appear here.</div> : <><div className="history-list">{(showAllAttempts ? attempts : attempts.slice(0, 8)).map((attempt) => <div className="history-row" key={attempt.id}><span className={`history-status ${attempt.outcome}`}>{attempt.outcome === 'blocked' ? 'BLOCKED' : 'PUBLISHED'}</span><span>Spec #{attempt.proposed_spec_id} against #{attempt.baseline_spec_id}</span><span className="history-reason">{attempt.reason}</span><time>{new Date(attempt.created_at).toLocaleString()}</time></div>)}</div>{attempts.length > 8 && <button className="button button-secondary history-more" onClick={() => setShowAllAttempts((value) => !value)}>{showAllAttempts ? 'Show recent attempts' : `Show all ${attempts.length} attempts`}</button>}</>}
       </section>
       <footer>Contract Guard · Impact reports are based on registered consumer declarations only.</footer>
     </main>

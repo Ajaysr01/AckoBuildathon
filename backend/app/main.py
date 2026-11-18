@@ -7,6 +7,7 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
@@ -19,6 +20,28 @@ from .specs import SpecError, parse_and_validate, version_from_document
 ROOT = Path(__file__).resolve().parents[2]
 STARTER_KIT = Path(os.getenv("STARTER_KIT_PATH", str(ROOT / "contract-guard-starter-kit")))
 Base.metadata.create_all(bind=engine)
+
+
+def _ensure_schema_compatibility():
+    """Add columns introduced after an existing local SQLite database was created."""
+    inspector = inspect(engine)
+    if "spec_versions" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("spec_versions")}
+    dialect = engine.dialect.name
+    statements = []
+    if "published" not in columns:
+        statements.append("ALTER TABLE spec_versions ADD COLUMN published BOOLEAN NOT NULL DEFAULT FALSE")
+    if "published_at" not in columns:
+        timestamp_type = "TIMESTAMP" if dialect == "postgresql" else "DATETIME"
+        statements.append("ALTER TABLE spec_versions ADD COLUMN published_at {}".format(timestamp_type))
+    if statements:
+        with engine.begin() as connection:
+            for statement in statements:
+                connection.execute(text(statement))
+
+
+_ensure_schema_compatibility()
 
 app = FastAPI(title="Contract Guard", version="0.1.0")
 app.add_middleware(

@@ -97,6 +97,9 @@ def compare_specs(db: Session, before: SpecVersion, after: SpecVersion) -> Dict[
     blocked_locations = {item["location"] for item in policy_result["blockers"]}
     for finding in findings:
         finding["publish_blocked"] = finding["location"] in blocked_locations
+        if finding["publish_blocked"]:
+            finding["policy_reason"] = policy_result["block_reasons"].get(
+                finding["location"], "This finding violates the current publish policy.")
     if policy_result["warnings"]:
         warning_locations = {item["location"] for item in policy_result["warnings"]}
         for finding in findings:
@@ -112,6 +115,7 @@ def compare_specs(db: Session, before: SpecVersion, after: SpecVersion) -> Dict[
             "breaking_count": sum(1 for finding in findings if finding["severity"] == "breaking"),
             "affected_consumer_count": len({consumer["name"] for finding in findings for consumer in finding["affected_consumers"]}),
             "publish_blocked": not policy_result["allowed"],
+            "policy_blocker_count": len(policy_result["blockers"]),
             "warning_count": len(policy_result["warnings"]),
         },
         "changes": findings,

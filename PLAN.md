@@ -16,13 +16,7 @@ Contract Guard helps API-owning engineers understand and prevent changes that br
 - Defer optional webhooks, CI integration, and AI-generated migration help.
 - Product-owner answers on severity and sunset policy are pending; provisional policy can be adjusted.
 
-## Research
-
-- oasdiff documents distinct diff, changelog, breaking-change, and validation functions: https://github.com/oasdiff/oasdiff
-- Apigee API hub documents OpenAPI linting with default/custom rules: https://cloud.google.com/apigee/docs/apihub/validate-spec
-
 ## Design
-
 - Modular FastAPI backend, React frontend, PostgreSQL persistence.
 - Modules: registry/import, validation, comparison, consumer impact, publish policy, history/metrics.
 - Data: Service; SpecVersion with internal ID, `info.version`, source filename, source document and validation status; ConsumerUsage; ChangeFinding; PublishAttempt.
