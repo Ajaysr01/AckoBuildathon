@@ -2,11 +2,10 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
@@ -53,20 +52,6 @@ app.add_middleware(
 )
 
 
-class ServiceCreate(BaseModel):
-    name: str
-    role: str
-    owner: Optional[str] = None
-
-
-class ConsumerUsageCreate(BaseModel):
-    provider_service_id: int
-    method: str
-    path: str
-    sends: List[str] = []
-    reads: List[str] = []
-
-
 def service_json(service: Service):
     return {"id": service.id, "name": service.name, "role": service.role, "owner": service.owner}
 
@@ -100,60 +85,6 @@ def list_services(db: Session = Depends(get_db)):
     return result
 
 
-@app.post("/api/services", status_code=201)
-def create_service(payload: ServiceCreate, db: Session = Depends(get_db)):
-    role = payload.role.lower()
-    if role not in {"provider", "consumer"}:
-        raise HTTPException(422, "role must be 'provider' or 'consumer'.")
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(422, "name is required.")
-    if db.query(Service).filter(Service.name == name).first():
-        raise HTTPException(409, "A service with this name is already registered.")
-    service = Service(name=name, role=role, owner=payload.owner)
-    db.add(service)
-    db.commit()
-    db.refresh(service)
-    return service_json(service)
-
-
-@app.get("/api/services/{service_id}/usages")
-def list_consumer_usages(service_id: int, db: Session = Depends(get_db)):
-    consumer = db.query(Service).filter(Service.id == service_id, Service.role == "consumer").first()
-    if not consumer:
-        raise HTTPException(404, "Consumer service not found.")
-    rows = db.query(ConsumerUsage).filter(ConsumerUsage.consumer_service_id == service_id).all()
-    return [{"id": row.id, "provider_service_id": row.provider_service_id, "method": row.method,
-             "path": row.path, "sends": row.sends, "reads": row.reads} for row in rows]
-
-
-@app.post("/api/services/{service_id}/usages", status_code=201)
-def register_consumer_usage(service_id: int, payload: ConsumerUsageCreate, db: Session = Depends(get_db)):
-    consumer = db.query(Service).filter(Service.id == service_id, Service.role == "consumer").first()
-    provider = db.query(Service).filter(Service.id == payload.provider_service_id, Service.role == "provider").first()
-    if not consumer:
-        raise HTTPException(404, "Consumer service not found.")
-    if not provider:
-        raise HTTPException(404, "Provider service not found.")
-    method = payload.method.strip().upper()
-    path = payload.path.strip()
-    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "TRACE"}:
-        raise HTTPException(422, "method must be a supported HTTP method.")
-    if not path.startswith("/"):
-        raise HTTPException(422, "path must start with '/'.")
-    existing = db.query(ConsumerUsage).filter_by(consumer_service_id=consumer.id,
-        provider_service_id=provider.id, method=method, path=path).first()
-    if existing:
-        raise HTTPException(409, "This consumer usage is already registered.")
-    row = ConsumerUsage(consumer_service_id=consumer.id, provider_service_id=provider.id,
-                        method=method, path=path, sends=payload.sends, reads=payload.reads)
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return {"id": row.id, "consumer_service_id": consumer.id, "provider_service_id": provider.id,
-            "method": row.method, "path": row.path, "sends": row.sends, "reads": row.reads}
-
-
 @app.get("/api/services/{service_id}/versions")
 def list_versions(service_id: int, db: Session = Depends(get_db)):
     service = db.query(Service).filter(Service.id == service_id, Service.role == "provider").first()
@@ -180,7 +111,10 @@ async def upload_version(service_id: int, file: UploadFile = File(...), db: Sess
     filename = file.filename or "spec.yaml"
     if not filename.lower().endswith((".yaml", ".yml", ".json")):
         raise HTTPException(415, "Upload a YAML (.yaml/.yml) or JSON (.json) OpenAPI file.")
-    raw = (await file.read()).decode("utf-8", errors="replace")
+    try:
+        raw = (await file.read()).decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(422, "OpenAPI files must use UTF-8 encoding.")
     try:
         document, errors = parse_and_validate(raw, filename)
         version = version_from_document(document)

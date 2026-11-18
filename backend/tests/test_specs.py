@@ -42,3 +42,14 @@ def test_resolves_internal_ref():
 def test_rejects_non_object_spec_root():
     with pytest.raises(SpecError, match="root must be an object"):
         parse_and_validate("[]", "spec.yaml")
+
+
+def test_rejects_unsupported_file_extension():
+    with pytest.raises(SpecError, match="YAML.*JSON"):
+        parse_and_validate('{"openapi":"3.0.3"}', "spec.txt")
+
+
+def test_rejects_openapi_version_outside_supported_303():
+    document = {"openapi": "3.1.0", "info": {"title": "Test", "version": "1.0.0"}, "paths": {}}
+    _, errors = parse_and_validate(json.dumps(document), "spec.json")
+    assert any("openapi must be 3.0.3" in error for error in errors)

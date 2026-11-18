@@ -26,8 +26,6 @@ function App() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState(null);
-  const [serviceForm, setServiceForm] = useState({ name: '', role: 'provider', owner: '' });
-  const [usageForm, setUsageForm] = useState({ consumer_service_id: '', provider_service_id: '', method: 'GET', path: '', sends: '', reads: '' });
   const [showAllAttempts, setShowAllAttempts] = useState(false);
 
   const providers = useMemo(() => services.filter((service) => service.role === 'provider'), [services]);
@@ -84,35 +82,10 @@ function App() {
       setMessage(`Added ${result.version} from ${result.source_filename}.`);
       setFile(null); event.target.reset();
       await refresh();
-      setVersions(await request(`/api/services/${selectedService}/versions`));
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
-
-  async function createService(event) {
-    event.preventDefault(); setError(''); setMessage(''); setBusy(true);
-    try {
-      const result = await request('/api/services', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...serviceForm, name: serviceForm.name.trim(), owner: serviceForm.owner.trim() || null }) });
-      setMessage(`Registered ${result.role} service ${result.name}.`);
-      setServiceForm({ name: '', role: 'provider', owner: '' });
-      await refresh();
-      if (result.role === 'provider') setSelectedService(String(result.id));
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
-
-  async function registerUsage(event) {
-    event.preventDefault(); setError(''); setMessage(''); setBusy(true);
-    try {
-      const result = await request(`/api/services/${usageForm.consumer_service_id}/usages`, { method: 'POST',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          provider_service_id: Number(usageForm.provider_service_id), method: usageForm.method, path: usageForm.path,
-          sends: usageForm.sends.split(',').map((value) => value.trim()).filter(Boolean),
-          reads: usageForm.reads.split(',').map((value) => value.trim()).filter(Boolean),
-        }) });
-      setMessage(`Registered ${result.method} ${result.path} usage.`);
-      setUsageForm((current) => ({ ...current, path: '', sends: '', reads: '' }));
+      const updatedVersions = await request(`/api/services/${selectedService}/versions`);
+      setVersions(updatedVersions);
+      setToId(String(result.id));
+      setComparison(null);
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
@@ -170,23 +143,7 @@ function App() {
         <div className="service-grid">{providers.length === 0 ? <div className="empty-state">Import the starter kit to register services and versions.</div> : providers.map((service) => <button key={service.id} className={`service-card ${String(service.id) === selectedService ? 'selected' : ''}`} onClick={() => setSelectedService(String(service.id))}>
           <div className="service-icon">{service.name.slice(0, 2).toUpperCase()}</div><div className="service-info"><b>{service.name}</b><span>{service.owner || 'Owner not set'}</span></div><span className="version-count">{service.version_count} versions</span>
         </button>)}</div>
-        <details className="registry-tools"><summary>Register a service or consumer usage</summary>
-          <form className="registration-form" onSubmit={createService}>
-            <label>Name<input required value={serviceForm.name} onChange={(event) => setServiceForm({ ...serviceForm, name: event.target.value })} placeholder="service-name" /></label>
-            <label>Role<select value={serviceForm.role} onChange={(event) => setServiceForm({ ...serviceForm, role: event.target.value })}><option value="provider">Provider</option><option value="consumer">Consumer</option></select></label>
-            <label>Owner / team<input value={serviceForm.owner} onChange={(event) => setServiceForm({ ...serviceForm, owner: event.target.value })} placeholder="Team name" /></label>
-            <button className="button button-secondary" disabled={busy}>Register service</button>
-          </form>
-          <form className="registration-form usage-form" onSubmit={registerUsage}>
-            <label>Consumer<select required value={usageForm.consumer_service_id} onChange={(event) => setUsageForm({ ...usageForm, consumer_service_id: event.target.value })}><option value="">Choose consumer</option>{services.filter((service) => service.role === 'consumer').map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
-            <label>Provider<select required value={usageForm.provider_service_id} onChange={(event) => setUsageForm({ ...usageForm, provider_service_id: event.target.value })}><option value="">Choose provider</option>{providers.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
-            <label>Method<select value={usageForm.method} onChange={(event) => setUsageForm({ ...usageForm, method: event.target.value })}>{['GET','POST','PUT','PATCH','DELETE'].map((method) => <option key={method}>{method}</option>)}</select></label>
-            <label>Path<input required value={usageForm.path} onChange={(event) => setUsageForm({ ...usageForm, path: event.target.value })} placeholder="/quotes/{id}" /></label>
-            <label>Sends<input value={usageForm.sends} onChange={(event) => setUsageForm({ ...usageForm, sends: event.target.value })} placeholder="vehicle.make, rider.age" /></label>
-            <label>Reads<input value={usageForm.reads} onChange={(event) => setUsageForm({ ...usageForm, reads: event.target.value })} placeholder="quoteId, premium.total" /></label>
-            <button className="button button-secondary" disabled={busy}>Register usage</button>
-          </form>
-        </details>
+        <div className="registry-note">Services and consumer declarations are loaded from the starter-kit import. Upload a spec to add a new provider version.</div>
       </section>
 
       <section className="panel" id="compare">
@@ -198,7 +155,7 @@ function App() {
           <label>Proposed version<select value={toId} onChange={(event) => setToId(event.target.value)}><option value="">Choose proposed version</option>{versions.filter((version) => version.validation_status === 'valid').map((version) => <option key={version.id} value={version.id}>{versionLabel(version)}</option>)}</select></label>
           <button className="button button-primary compare-button" disabled={busy || !fromId || !toId || fromId === toId} onClick={compare}>Review changes</button>
         </div>
-        {selected && <form className="upload-row" onSubmit={uploadSpec}><span className="upload-label">Add a proposed spec to {selected.name}</span><input type="file" accept=".yaml,.yml,.json" onChange={(event) => setFile(event.target.files?.[0] || null)} /><button className="button button-secondary" disabled={busy || !file}>Upload spec</button></form>}
+        {selected && <form className="upload-row" onSubmit={uploadSpec}><span className="upload-label">Add a proposed spec to {selected.name}</span><input type="file" accept=".yaml,.yml,.json" onChange={(event) => setFile(event.target.files?.[0] || null)} /><button className="button button-secondary" disabled={busy || !file}>Upload spec</button><small>OpenAPI 3.0.3 only · YAML (.yaml/.yml) or JSON (.json)</small></form>}
         {versions.some((version) => version.version_collision) && <div className="notice warning compact">Duplicate imported version strings are kept as separate records. Choose the exact source file in the selectors; new uploads cannot reuse an existing version.</div>}
           {comparison && <div className="comparison-result">
           <div className={`decision-banner ${comparison.summary.publish_blocked ? 'blocked' : 'safe'}`}><div><b>{comparison.summary.publish_blocked ? `Publishing blocked by policy (${comparison.summary.policy_blocker_count} blocker${comparison.summary.policy_blocker_count === 1 ? '' : 's'})` : 'No declared consumer break detected'}</b><span>{comparison.summary.change_count} changes · {comparison.summary.affected_consumer_count} affected declared consumers · {comparison.summary.warning_count} warnings</span>{comparison.summary.publish_blocked && <small>Non-breaking changes can still be blocked when an expired sunset element is used by a declared consumer.</small>}</div><button className={`button ${comparison.summary.publish_blocked ? 'button-disabled' : 'button-green'}`} onClick={publish} disabled={busy}>{comparison.summary.publish_blocked ? 'Record blocked attempt' : 'Publish version'}</button></div>

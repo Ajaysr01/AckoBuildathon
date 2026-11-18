@@ -1,20 +1,35 @@
-# Progress
+# Project Status — Contract Guard
 
-## Milestone 1 — Registry and import (complete)
+Status updated 2026-11-18. This file records implemented behavior and verification already run; it is not a future-work checklist.
 
-- Added FastAPI endpoints for service registration/listing, spec upload/listing, starter-kit import, and import history.
-- Added SQLAlchemy persistence with PostgreSQL configuration for Docker Compose and SQLite as a convenient local/test default.
-- Starter-kit import preserves duplicate Claims `1.1.0` entries as separate records; invalid specs remain visible with validation errors, while other files import.
-- New spec uploads validate OpenAPI structure and local `$ref`s and reject provider/version collisions without overwriting.
-- Verification: `pytest -q backend/tests` passed (8 tests); Python compile check passed.
-- Container startup not yet verified because Docker daemon is not running in this environment.
-- Milestone 2 complete: semantic comparison endpoint resolves local `$ref`s, ignores component-only reorganization, reports route placeholder renames and schema/parameter/response changes, and matches finding locations against declared consumer use.
-- Milestones 2–4 complete: publish gate records allow/block decisions and history; metrics endpoint and React interface are implemented. Policy includes provisional sunset behavior. Consumer usage can also be registered through the API.
-- Verification: `pytest -q backend/tests` passed (21 tests); `python -m compileall` passed; `npm run build` passed; `docker compose config --quiet` passed.
-- Container startup could not be verified: Docker CLI is present but the Docker daemon is not running/reachable.
-- `README.md` and `REVIEW.md` are drafted. Product-owner policy answers are still pending.
-- Next: after Docker becomes available, run PostgreSQL + API + UI together and manually verify the full flow.
-- Dashboard load/refresh issue fixed: an old SQLite database lacked the `published` columns used by metrics; backend startup now adds missing compatibility columns, and the UI refresh loads successful dashboard sections even if another endpoint errors.
-- Publish findings now surface policy-specific blocker counts and reasons; publish audit shows recent attempts with a show-all option, and repeated attempts are retained as separate audit records.
-- Docker verified end-to-end with an isolated clean Compose project: all three containers became healthy; API health/services/metrics and Nginx responded; importing into a new PostgreSQL volume loaded 12 specs (1 invalid retained), 4 consumer declarations, and 7 services. The temporary smoke-test project and its volume were removed; the regular Compose project remains running with its data intact.
-- Scope unchanged: supplied specs, consumer declarations, and webhook receiver remain untouched.
+## Implemented product
+
+- FastAPI backend with SQLAlchemy persistence; PostgreSQL is used in Docker Compose and SQLite is the default for local development/tests when `DATABASE_URL` is unset.
+- Provider and consumer registry, provider OpenAPI versions, consumer usage declarations, and import-run records are populated from the supplied starter kit. Manual service creation and consumer usage creation controls/routes have been removed.
+- Repeatable starter-kit import preserves duplicate provider version strings as distinct records with source filename and warnings. Invalid imported specs remain visible with validation errors; normal uploads with validation failures are rejected.
+- Spec uploads accept UTF-8 YAML (`.yaml`/`.yml`) and JSON (`.json`) only, require OpenAPI 3.0.3, validate local references, and reject external references. Successful uploads attach to the selected provider and are selected as the proposed version. A valid baseline from that same provider can be compared by record ID.
+- Comparison supports common endpoint, route parameter, schema, request/response, lifecycle and `x-internal` findings. Consumer impact is matched against imported declarations only; classification remains heuristic.
+- Publish policy, outcome history and metrics are implemented. Policy blocks breaking findings affecting declared consumers and expired `x-sunset` elements still used by declared consumers; it reports upcoming sunset warnings.
+- React frontend supports import, service/version selection, upload, comparison, impact review, publish attempts, metrics and audit history.
+- Docker Compose contains PostgreSQL 16, FastAPI, and a production-built React app served by Nginx. API waits for database health and frontend waits for API health; `API_PORT` and `WEB_PORT` can change host ports.
+
+## Verification run
+
+- `.venv/bin/pytest -q backend/tests`: **25 passed**, with one local LibreSSL/urllib3 compatibility warning.
+- `npm run build` in `frontend`: passed.
+- `docker compose config --quiet`: passed.
+- `docker compose up --build -d`: latest backend/frontend images built; PostgreSQL, API, and web reported healthy.
+- Clean isolated Compose smoke test: imported 12 specs (1 invalid retained), 4 consumer declarations, and 7 services; health/services/metrics API calls and frontend response succeeded. The isolated smoke-test project and its volume were removed afterward.
+- Regression tests verify upload-then-compare, unsupported file extension/OpenAPI version rejection, and removal of manual creation routes.
+
+## Current limitations
+
+- Comparison coverage is intentionally incomplete for less-common OpenAPI constructs; severity is a heuristic, not proof of runtime compatibility.
+- Impact and policy reflect only the consumer declarations present in the imported starter kit.
+- Authentication, authorization, formal approvals, external `$ref` loading, notifications, and CI integration are not implemented.
+- The last recorded frontend dependency audit identified high-severity Vite-toolchain advisories. No newer audit result is recorded here.
+
+## Scope protection
+
+- Supplied starter-kit specifications, consumer declarations, and webhook receiver remain unmodified.
+- Optional notifications, CI integration, and AI migration guidance remain outside the implemented scope.

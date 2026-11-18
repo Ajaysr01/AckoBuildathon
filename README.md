@@ -37,9 +37,9 @@ SQLite is used by default if `DATABASE_URL` is not set (convenient for local/tes
 
 ## Use
 
-1. Choose **Import starter kit** to register the three providers, four consumer declarations, and all 12 supplied spec files.
-2. Select a provider and choose exact baseline and proposed records. Duplicate imported Claims `1.1.0` versions remain distinct by filename and can be selected explicitly.
-3. Review findings and declared consumer impact. Uploading a regular spec requires YAML/JSON with a valid OpenAPI 3.0.3 document and resolvable local `$ref`s. Duplicate provider/version uploads are rejected; records are never overwritten.
+1. Choose **Import starter kit** to register the three providers, four consumer declarations, and all 12 supplied spec files. The import is repeatable and does not duplicate records.
+2. Select a provider and choose exact baseline and proposed records. Duplicate imported Claims `1.1.0` versions remain distinct by filename and can be selected explicitly. Services and consumer declarations are sourced from the starter-kit import; manual creation is not available.
+3. To add a proposed version, upload a UTF-8 YAML (`.yaml`/`.yml`) or JSON (`.json`) file containing a valid OpenAPI 3.0.3 document with resolvable local `$ref`s. The uploaded version is added to the selected provider and automatically selected as proposed; choose any valid version of that same provider as baseline. Unsupported extensions, invalid specs, cross-provider comparisons, and duplicate provider/version uploads are rejected. Existing records are never overwritten.
 4. Publish a proposed version against the selected baseline. A blocked attempt is recorded in publish history.
 
 Impact is based only on registered consumer declarations. A “no declared consumer affected” result does not imply there are no other consumers.
@@ -47,9 +47,8 @@ Impact is based only on registered consumer declarations. A “no declared consu
 ## API endpoints
 
 - `GET /api/health`
-- `GET /api/services`, `POST /api/services`
+- `GET /api/services`
 - `GET /api/services/{service_id}/versions`, `POST /api/services/{service_id}/versions`
-- `GET /api/services/{service_id}/usages`, `POST /api/services/{service_id}/usages`
 - `POST /api/import/starter-kit`, `GET /api/import/runs`
 - `GET /api/versions/{from_id}/compare/{to_id}`
 - `POST /api/versions/{version_id}/publish?baseline_id={baseline_id}`
@@ -76,18 +75,20 @@ npm install
 npm run build
 ```
 
+Latest recorded verification: 25 backend tests passed (one local LibreSSL/urllib3 warning), the frontend production build passed, `docker compose config --quiet` passed, and the rebuilt Compose database/API/web services reported healthy. A clean isolated Docker smoke test also verified starter-kit import and API/frontend responses; this is not a browser-driven UI acceptance test.
+
 ## Current scope and limitations
 
-- Implemented: service registry, starter-kit import, YAML/JSON/OpenAPI structural and local-ref validation, duplicate-version handling, semantic comparison for common OpenAPI schemas/parameters/responses, declared consumer impact, provisional configurable publish policy, publish-attempt history, metrics, and a React UI.
+- Implemented: imported service registry (manual service and consumer-usage creation is removed), starter-kit import, UTF-8 YAML/JSON OpenAPI 3.0.3 structural and local-ref validation, duplicate-version handling, semantic comparison for common OpenAPI schemas/parameters/responses, declared consumer impact, provisional publish policy, publish-attempt history, metrics, and a React UI.
 - Imported invalid specs remain visible with errors so import can complete; invalid user uploads are rejected.
-- The provisional policy blocks breaking changes affecting declared consumers and blocks expired `x-sunset` elements when still used by a declared consumer. Deprecation/sunset policy is centralized in `backend/app/policy.py` and should be updated to match product-owner guidance.
-- Dependency audit reported unresolved high-severity advisories in the Vite toolchain (including `picomatch`); the UI builds, but resolve or document this toolchain risk before external deployment.
-- No auth/approval workflow, external `$ref` loading, notifications, or CI integration is included yet. Unsupported OpenAPI constructs and classifier edge cases need further coverage before production use.
+- The implemented publish policy is maintained in `backend/app/policy.py`: it blocks breaking changes that affect declared consumers and expired `x-sunset` elements still used by a declared consumer, and warns for upcoming sunsets. Impact is limited to imported declarations.
+- The last recorded dependency audit reported high-severity advisories in the Vite toolchain (including `picomatch`). The frontend builds, but this is a dependency risk to revisit before external deployment; no newer audit result is recorded here.
+- No auth/approval workflow, external `$ref` loading, notifications, or CI integration is included. Unsupported OpenAPI constructs and classifier edge cases need further coverage before production use.
 - Severity/classification is a heuristic and should be treated as review guidance, not proof of runtime behavior.
 
 ## Buildathon documents
 
-- `PLAN.md` — Gate 1 plan
-- `PROGRESS.md` — milestone status
+- `PLAN.md` — implemented product and technical behavior
+- `PROGRESS.md` — current implemented status and verification
 - `DECISIONS.md` — assumptions and decisions
-- `REVIEW.md` — final self-review (complete before final submission)
+- `REVIEW.md` — current self-review and known limitations

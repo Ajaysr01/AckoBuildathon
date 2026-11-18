@@ -7,18 +7,18 @@ Contract Guard stores provider services and OpenAPI specification versions, comp
 The impact boundary is explicit: a comparison considers only consumer usages registered in Contract Guard. A result with no matched consumer means **no declared consumer was matched**, not that no other consumer exists.
 
 Implemented as core product behavior:
-- Provider and consumer service registry, including owner/team metadata.
+- Provider and consumer service registry, including owner/team metadata, populated by starter-kit import (no manual creation controls).
 - Starter-kit import for provider specs and consumer usage declarations.
 - YAML/JSON OpenAPI 3.0.3 upload, validation, and listing by internal spec record ID.
 - Semantic comparison for common endpoint, parameter, schema, and response changes, including local `$ref` resolution.
 - Declared-consumer impact matching and a separate publish policy.
 - Publish attempt history and registry metrics.
-- React interface for import, registry actions, uploads, comparisons, publish outcomes, audit history, and metrics.
+- React interface for import, registry viewing, uploads, comparisons, publish outcomes, audit history, and metrics.
 - Docker Compose configuration for PostgreSQL, FastAPI, and a built React frontend served by Nginx.
 
 ## 2. User workflow
-1. **Start the stack.** The documented command is `docker compose up --build`, configured to build and start PostgreSQL, the API, and frontend. Compose syntax is verified, but a full startup has not been run because Docker was unavailable. Local development can instead run the API and Vite frontend separately; SQLite is the API's default database when `DATABASE_URL` is unset.
-2. **Import or register.** The user imports the starter kit or registers services and consumer usage. Import is repeatable: existing source records and usages are retained rather than duplicated.
+1. **Start the stack.** `docker compose up --build` builds and starts PostgreSQL, the API, and frontend. This was verified end to end with Docker. Local development can instead run the API and Vite frontend separately; SQLite is the API's default database when `DATABASE_URL` is unset.
+2. **Import registry data.** The user imports the starter kit to populate provider/consumer services, provider specs, and consumer usage declarations. Manual service and usage creation endpoints and UI controls are removed so impact data stays grounded in supplied declarations rather than guessed `reads`/`sends` lists. Import is repeatable: existing source records and usages are retained rather than duplicated.
 3. **Choose provider versions.** Versions are selected by internal record ID. The UI also displays the `info.version` value and source filename, so duplicate imported version strings remain distinguishable.
 4. **Compare.** A baseline and proposed version for the same provider are compared. Invalid imported records are retained and returned by the versions API, but are excluded from the UI's compare selectors and rejected by the compare API.
 5. **Review impact and policy.** Findings identify their location, classification, matched declared consumers, and policy outcome/reason where blocked.
@@ -28,21 +28,22 @@ Implemented as core product behavior:
 
 ### API and persistence — `backend/app/main.py`, `backend/app/models.py`, `backend/app/database.py`
 
-- `main.py` exposes the registry, import, upload, compare, publish, history, and metrics routes.
+- `main.py` exposes service listing, import, upload, compare, publish, history, and metrics routes. Service and consumer usage rows are created through import, not manual write endpoints.
 - `models.py` defines the persisted `Service`, `SpecVersion`, `ConsumerUsage`, `ImportRun`, and `PublishAttempt` records.
 - `database.py` selects `DATABASE_URL` when provided; otherwise it uses a local SQLite database. SQLAlchemy sessions are provided to API routes through `get_db`.
-- API route validation enforces provider/consumer roles, supported methods, leading-slash usage paths, duplicate service names, and valid provider IDs.
+- Upload routes validate provider IDs and accepted OpenAPI file formats; imported consumer declaration parsing determines the stored provider/method/path/field usage.
 - An upload is rejected when parsing/validation fails or when the same provider already has that `info.version`. Existing records are not overwritten.
 - Startup creates missing tables and includes a small compatibility migration for the `published` and `published_at` columns on older `spec_versions` databases. This supports previously created local databases without discarding stored records.
 - The frontend refreshes services, attempts, and metrics independently. A failing metrics request therefore does not prevent the service list or history from rendering.
 
 ### Spec parsing and validation — `backend/app/specs.py`
 
-- YAML is parsed for `.yaml`/`.yml`; JSON is parsed for `.json`. A malformed document or non-object root raises a clear `SpecError`.
+- Only UTF-8 YAML (`.yaml`/`.yml`) and JSON (`.json`) filenames are accepted. A malformed document or non-object root raises a clear `SpecError`.
 - The implemented validator requires OpenAPI `3.0.3`, `info.title`, `info.version`, a `paths` object, object path items, and response maps for operations. It then uses `openapi-spec-validator` for OpenAPI validation.
 - Every `$ref` is checked recursively. Local JSON-pointer references must resolve within the same document; external references are rejected rather than fetched.
 - `info.version` is display metadata. Database identity is the internal `SpecVersion.id`; source filename is retained to distinguish imported duplicate version strings.
 - Normal uploads with errors are rejected. During starter-kit import, invalid specs are stored with `validation_status="invalid"` and validation errors so other files can still import; the versions API returns those records and errors, while compare selection excludes invalid versions.
+- In the upload flow, the selected provider determines where the spec is stored. A successful upload is refreshed into that provider's version list and selected immediately as the proposed version. The baseline can be any other valid version of that same provider; comparison is by internal IDs, not by matching version labels. API-side validation rejects comparisons across providers.
 
 ### Starter-kit import — `backend/app/main.py` (`POST /api/import/starter-kit`)
 
@@ -94,7 +95,8 @@ The policy returns blockers, warnings, a reason for each blocker, and a policy v
 - The interface calls the FastAPI endpoints from the browser. `VITE_API_URL` selects the API base URL; its development default is `http://localhost:8000`.
 - Dashboard service, publish history, and metrics requests use independent results so a single failed section does not hide the others.
 - Starter-kit import reports a short `Upload Successful` confirmation; detailed import warnings remain available from the API import-run record.
-- The interface includes service registration, consumer usage registration, spec upload, provider/version selection, comparison findings, policy reasons, publish actions, metrics, and an expandable audit history.
+- The interface includes starter-kit import, registry viewing, spec upload, provider/version selection, comparison findings, policy reasons, publish actions, metrics, and an expandable audit history. Manual service registration and consumer read/write editing are not exposed.
+- A successful spec upload adds a version to the selected provider and automatically selects it as the proposed version. The user can choose any valid baseline belonging to that same provider; cross-provider comparisons are rejected by the API.
 - The top-level manual refresh control is intentionally not shown; dashboard data loads on application start and is reloaded after import, uploads, and publish attempts.
 
 ### Container setup — `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`
@@ -107,17 +109,14 @@ The policy returns blockers, warnings, a reason for each blocker, and a policy v
 ## 4. Implemented API surface
 
 - `GET /api/health`
-- `GET /api/services`, `POST /api/services`
-- `GET /api/services/{service_id}/usages`, `POST /api/services/{service_id}/usages`
-- `GET /api/services/{service_id}/versions`, `POST /api/services/{service_id}/versions`
+- `GET /api/services`
+- `GET /api/services/{service_id}/versions`, `POST /api/services/{service_id}/versions` (UTF-8 OpenAPI 3.0.3 YAML/JSON; accepted suffixes `.yaml`, `.yml`, `.json`)
 - `POST /api/import/starter-kit`, `GET /api/import/runs`
 - `GET /api/versions/{from_id}/compare/{to_id}`
 - `POST /api/versions/{version_id}/publish?baseline_id={baseline_id}`
 - `GET /api/publish-attempts`, `GET /api/metrics`
 
 ## 5. Verification present in the repository
-
-- Backend integration/unit tests are in `backend/tests/` and cover import idempotency, duplicate imported versions, invalid local references, upload rejection, semantic diff cases, consumer impact, publish outcomes, policy/sunset behavior, history accumulation, and metrics.
+- Backend integration/unit tests are in `backend/tests/` and cover import idempotency, duplicate imported versions, invalid local references, upload rejection and upload-then-compare flow, accepted extension/OpenAPI version checks, manual-write route removal, semantic diff cases, consumer impact, publish outcomes, policy/sunset behavior, history accumulation, and metrics.
 - The frontend has a production build command (`cd frontend && npm run build`).
-- Compose configuration validation is `docker compose config --quiet`.
-- The most recently run verification at the time this plan was updated: `21 passed` for `pytest -q backend/tests`; frontend `npm run build` passed; `docker compose config --quiet` passed. Docker image startup was not verified because the Docker daemon was unavailable.
+- Latest feature verification: `.venv/bin/pytest -q backend/tests` passed 25 tests (one local LibreSSL/urllib3 warning); `npm run build` passed; Compose config validation and image rebuild passed, and all three services reported healthy. Regression tests verify upload-then-compare with a same-provider baseline, unsupported format/version rejection, and removed manual-write routes. The container smoke test exercises HTTP endpoints and import, not a browser-driven UI acceptance flow.

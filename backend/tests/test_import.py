@@ -78,12 +78,49 @@ def test_new_upload_rejects_duplicate_without_overwriting(monkeypatch):
 
 
 def test_upload_rejects_invalid_spec(monkeypatch):
-    service = client.post("/api/services", json={"name": "new-api", "role": "provider", "owner": "Test"}).json()
+    monkeypatch.setattr("app.main.STARTER_KIT", KIT)
+    client.post("/api/import/starter-kit")
+    service = next(row for row in client.get("/api/services").json() if row["name"] == "quote-api")
     path = KIT / "specs" / "claims-api" / "2-channel-and-notes.yaml"
     with path.open("rb") as spec:
         response = client.post("/api/services/{}/versions".format(service["id"]), files={"file": (path.name, spec, "application/yaml")})
     assert response.status_code == 422
     assert any("ClaimDocumnt" in error for error in response.json()["detail"]["errors"])
+
+
+def test_upload_adds_proposed_version_and_can_compare_to_provider_baseline(monkeypatch):
+    monkeypatch.setattr("app.main.STARTER_KIT", KIT)
+    client.post("/api/import/starter-kit")
+    service = next(row for row in client.get("/api/services").json() if row["name"] == "quote-api")
+    baseline_id = _version_id("quote-api", "1-initial.yaml")
+    document = (KIT / "specs" / "quote-api" / "1-initial.yaml").read_text(encoding="utf-8")
+    document = document.replace("version: 1.0.0", "version: 99.0.0", 1)
+    response = client.post("/api/services/{}/versions".format(service["id"]),
+        files={"file": ("candidate.yaml", document.encode("utf-8"), "application/yaml")})
+    assert response.status_code == 201, response.text
+    proposed = response.json()
+    assert proposed["version"] == "99.0.0"
+    comparison = client.get("/api/versions/{}/compare/{}".format(baseline_id, proposed["id"]))
+    assert comparison.status_code == 200, comparison.text
+
+
+def test_manual_service_and_usage_creation_routes_are_removed(monkeypatch):
+    monkeypatch.setattr("app.main.STARTER_KIT", KIT)
+    client.post("/api/import/starter-kit")
+    services = client.get("/api/services").json()
+    consumer = next(row for row in services if row["role"] == "consumer")
+    assert client.post("/api/services", json={"name": "manual", "role": "provider"}).status_code == 405
+    assert client.post("/api/services/{}/usages".format(consumer["id"]), json={}).status_code == 404
+
+
+def test_upload_rejects_unsupported_file_extension(monkeypatch):
+    monkeypatch.setattr("app.main.STARTER_KIT", KIT)
+    client.post("/api/import/starter-kit")
+    service = next(row for row in client.get("/api/services").json() if row["name"] == "quote-api")
+    response = client.post("/api/services/{}/versions".format(service["id"]),
+        files={"file": ("spec.txt", b"openapi: 3.0.3", "text/plain")})
+    assert response.status_code == 415
+    assert "YAML" in response.json()["detail"] and "JSON" in response.json()["detail"]
 
 
 def _version_id(service_name, filename):
@@ -224,21 +261,6 @@ def test_each_publish_retry_is_added_to_audit(monkeypatch):
     assert len(attempts) == 2
     assert attempts[0]["id"] > attempts[1]["id"]
     assert client.get("/api/metrics").json()["publish_attempts"] == 2
-
-
-def test_consumer_usage_can_be_registered_through_api(monkeypatch):
-    monkeypatch.setattr("app.main.STARTER_KIT", KIT)
-    client.post("/api/import/starter-kit")
-    services = client.get("/api/services").json()
-    consumer = next(row for row in services if row["name"] == "notifications-svc")
-    provider = next(row for row in services if row["name"] == "claims-api")
-    result = client.post("/api/services/{}/usages".format(consumer["id"]), json={
-        "provider_service_id": provider["id"], "method": "GET", "path": "/claims/{id}",
-        "sends": ["claimId"], "reads": ["claimId", "status"],
-    })
-    assert result.status_code == 201
-    assert result.json()["path"] == "/claims/{id}"
-    assert len(client.get("/api/services/{}/usages".format(consumer["id"])).json()) == 4
 
 
 def test_dashboard_metrics_endpoint_succeeds():

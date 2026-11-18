@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import yaml
@@ -10,6 +11,8 @@ class SpecError(ValueError):
 
 
 def parse_document(raw: str, filename: str) -> Dict[str, Any]:
+    if Path(filename).suffix.lower() not in {".yaml", ".yml", ".json"}:
+        raise SpecError("OpenAPI file must use YAML (.yaml/.yml) or JSON (.json).")
     try:
         parsed = json.loads(raw) if filename.lower().endswith(".json") else yaml.safe_load(raw)
     except (ValueError, yaml.YAMLError) as exc:
