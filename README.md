@@ -77,14 +77,20 @@ npm run build
 
 Latest recorded verification: 25 backend tests passed (one local LibreSSL/urllib3 warning), the frontend production build passed, `docker compose config --quiet` passed, and the rebuilt Compose database/API/web services reported healthy. A clean isolated Docker smoke test also verified starter-kit import and API/frontend responses; this is not a browser-driven UI acceptance test.
 
+Final runtime check also loaded the UI in Chromium: imported services and versions appeared, there were no browser console errors, and health/services/metrics endpoints responded. This is a smoke check, not an exhaustive manual acceptance run.
+
 ## Current scope and limitations
 
 - Implemented: imported service registry (manual service and consumer-usage creation is removed), starter-kit import, UTF-8 YAML/JSON OpenAPI 3.0.3 structural and local-ref validation, duplicate-version handling, semantic comparison for common OpenAPI schemas/parameters/responses, declared consumer impact, provisional publish policy, publish-attempt history, metrics, and a React UI.
 - Imported invalid specs remain visible with errors so import can complete; invalid user uploads are rejected.
 - The implemented publish policy is maintained in `backend/app/policy.py`: it blocks breaking changes that affect declared consumers and expired `x-sunset` elements still used by a declared consumer, and warns for upcoming sunsets. Impact is limited to imported declarations.
-- The last recorded dependency audit reported high-severity advisories in the Vite toolchain (including `picomatch`). The frontend builds, but this is a dependency risk to revisit before external deployment; no newer audit result is recorded here.
+- The final `npm audit --json` run reports **4 high-severity findings** in the Vite toolchain (including `picomatch`); the frontend builds, but this must be reviewed before production deployment. No dependency changes were made in the final audit.
 - No auth/approval workflow, external `$ref` loading, notifications, or CI integration is included. Unsupported OpenAPI constructs and classifier edge cases need further coverage before production use.
 - Severity/classification is a heuristic and should be treated as review guidance, not proof of runtime behavior.
+
+## Final requirement assessment
+
+The tested imported-spec workflow is suitable for a scoped demo, but the project does not fully satisfy every problem-statement must-have. In particular, services and consumer declarations can only be populated by importing the supplied kit; manual registration was intentionally removed. Comparison coverage is common-case rather than exhaustive. See `PLAN.md` for implemented behavior and `PROGRESS.md` for the final check results. Production release is not recommended until dependency advisories and policy/classifier limitations are reviewed.
 
 ## Buildathon documents
 

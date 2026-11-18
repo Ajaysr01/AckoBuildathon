@@ -27,9 +27,16 @@ Status updated 2026-11-18. This file records implemented behavior and verificati
 - Comparison coverage is intentionally incomplete for less-common OpenAPI constructs; severity is a heuristic, not proof of runtime compatibility.
 - Impact and policy reflect only the consumer declarations present in the imported starter kit.
 - Authentication, authorization, formal approvals, external `$ref` loading, notifications, and CI integration are not implemented.
-- The last recorded frontend dependency audit identified high-severity Vite-toolchain advisories. No newer audit result is recorded here.
+- Final `npm audit --json` check reports four high-severity findings in the Vite toolchain, including a `picomatch` ReDoS advisory. Build succeeds, but no remediation was applied in this audit.
+- The problem-statement transcript requirement is not currently met in the workspace: no `transcripts/` directory/export was found. Supply the genuine OpenCode session export separately if required for assessment; do not fabricate it.
 
 ## Scope protection
 
 - Supplied starter-kit specifications, consumer declarations, and webhook receiver remain unmodified.
 - Optional notifications, CI integration, and AI migration guidance remain outside the implemented scope.
+
+## Final requirements assessment
+
+- **Met in the tested scope:** shared local `$ref` resolution, core spec comparison and impact reporting, publish gate/history, UI for imported services/versions, metrics endpoint, and one-command Docker Compose runtime.
+- **Partial / intentional deviation:** the statement calls for registering services/owners and consumer declarations; the product imports the supplied registry but does not allow manual creation. Classifier coverage is also heuristic and limited to common constructs.
+- **Not release-ready for production:** unresolved high-severity frontend dependency advisories and no auth/approval safeguards. Buildathon demo status: ready for the imported starter-kit flow, with the above caveats disclosed.
