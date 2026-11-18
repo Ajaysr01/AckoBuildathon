@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: contract_guard
+      POSTGRES_USER: contract_guard
+      POSTGRES_PASSWORD: contract_guard
+    volumes:
+      - contract-guard-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contract_guard -d contract_guard"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://contract_guard:contract_guard@db:5432/contract_guard
+      STARTER_KIT_PATH: /starter-kit
+      FRONTEND_ORIGIN: http://localhost:5173
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./contract-guard-starter-kit:/starter-kit:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: node:20-slim
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  contract-guard-data:
+  frontend-node-modules:
