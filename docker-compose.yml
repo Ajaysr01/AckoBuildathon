@@ -12,15 +12,16 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+      start_period: 5s
 
   api:
     build: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://contract_guard:contract_guard@db:5432/contract_guard
       STARTER_KIT_PATH: /starter-kit
-      FRONTEND_ORIGIN: http://localhost:5173
+      FRONTEND_ORIGIN: http://localhost:${WEB_PORT:-5173}
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     volumes:
       - ./contract-guard-starter-kit:/starter-kit:ro
     depends_on:
@@ -32,11 +33,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: http://localhost:8000
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:${API_PORT:-8000}}
     ports:
-      - "5173:80"
+      - "${WEB_PORT:-5173}:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   contract-guard-data:

@@ -12,9 +12,9 @@ From the project root:
 docker compose up --build
 ```
 
-Open the React application at <http://localhost:5173> and the FastAPI/OpenAPI docs at <http://localhost:8000/docs>. PostgreSQL data is persisted in a Compose volume. Stop with `docker compose down` (data remains in the volume; `docker compose down -v` removes it).
+Open the React application at <http://localhost:5173> and the FastAPI/OpenAPI docs at <http://localhost:8000/docs>. PostgreSQL data is persisted in a Compose volume. Stop with `docker compose down` (data remains in the volume; `docker compose down -v` removes it). If the default ports are occupied, set `WEB_PORT` and/or `API_PORT` before starting Compose. If changing the API port, also set the browser-facing API URL because it is compiled into the frontend image; for example: `API_PORT=8010 VITE_API_URL=http://localhost:8010 docker compose up --build`.
 
-Compose builds three services: PostgreSQL 16 (`db`), the FastAPI backend (`backend/Dockerfile`, Python 3.12 and the pinned packages in `backend/requirements.txt`), and the React frontend (`frontend/Dockerfile`, Node 20.19 for the Vite build, served as static files by Nginx). The API waits for PostgreSQL health before starting; the frontend is built once into a production bundle. The browser-facing API URL is passed as the `VITE_API_URL` build argument in `docker-compose.yml`.
+Compose builds three services: PostgreSQL 16 (`db`), the FastAPI backend (`backend/Dockerfile`, Python 3.12 and the pinned packages in `backend/requirements.txt`), and the React frontend (`frontend/Dockerfile`, Node 20.19 for the Vite build, served as static files by Nginx). The API waits for PostgreSQL health before starting; the frontend waits for the API health check and is built once into a production bundle. The browser-facing API URL is passed as the `VITE_API_URL` build argument in `docker-compose.yml`.
 
 To run services locally without containers, start PostgreSQL and set `DATABASE_URL`, then:
 

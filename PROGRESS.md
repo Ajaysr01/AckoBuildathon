@@ -16,4 +16,5 @@
 - Next: after Docker becomes available, run PostgreSQL + API + UI together and manually verify the full flow.
 - Dashboard load/refresh issue fixed: an old SQLite database lacked the `published` columns used by metrics; backend startup now adds missing compatibility columns, and the UI refresh loads successful dashboard sections even if another endpoint errors.
 - Publish findings now surface policy-specific blocker counts and reasons; publish audit shows recent attempts with a show-all option, and repeated attempts are retained as separate audit records.
+- Docker verified end-to-end with an isolated clean Compose project: all three containers became healthy; API health/services/metrics and Nginx responded; importing into a new PostgreSQL volume loaded 12 specs (1 invalid retained), 4 consumer declarations, and 7 services. The temporary smoke-test project and its volume were removed; the regular Compose project remains running with its data intact.
 - Scope unchanged: supplied specs, consumer declarations, and webhook receiver remain untouched.
